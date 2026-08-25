@@ -1,4 +1,5 @@
-FROM node:24-alpine AS build
+ARG NODE_IMAGE=node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -6,7 +7,16 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:24-alpine AS runtime
+FROM ${NODE_IMAGE} AS runtime
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG SOURCE_URL=https://github.com/Ding-Ding-Projects/ttc-closure-bets
+ARG CREATED=unknown
+LABEL org.opencontainers.image.title="TTC Closure Bets" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.revision="$REVISION" \
+      org.opencontainers.image.source="$SOURCE_URL" \
+      org.opencontainers.image.created="$CREATED"
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 DATABASE_PATH=/data/ttc-closure-bets.sqlite
 COPY package*.json ./

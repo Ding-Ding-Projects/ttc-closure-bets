@@ -25,6 +25,7 @@ export class Store {
         day TEXT NOT NULL,
         line TEXT NOT NULL CHECK(line IN ('1','2','4','5','6')),
         prediction TEXT NOT NULL CHECK(prediction IN ('disrupted','normal')),
+        nickname_snapshot TEXT NOT NULL DEFAULT '',
         revised_at INTEGER NOT NULL,
         locked_at INTEGER,
         result TEXT NOT NULL DEFAULT 'pending' CHECK(result IN ('pending','won','lost','unresolved')),
@@ -34,6 +35,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS polls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         day TEXT NOT NULL,
+        started_at INTEGER,
         checked_at INTEGER NOT NULL,
         success INTEGER NOT NULL,
         error TEXT
@@ -51,6 +53,10 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS observations_day_line ON observations(day, line, checked_at);
     `);
+    const betColumns = this.db.prepare("PRAGMA table_info(bets)").all() as { name: string }[];
+    if (!betColumns.some((column) => column.name === "nickname_snapshot")) this.db.exec("ALTER TABLE bets ADD COLUMN nickname_snapshot TEXT NOT NULL DEFAULT ''");
+    const pollColumns = this.db.prepare("PRAGMA table_info(polls)").all() as { name: string }[];
+    if (!pollColumns.some((column) => column.name === "started_at")) this.db.exec("ALTER TABLE polls ADD COLUMN started_at INTEGER");
   }
 
   close(): void { this.db.close(); }
@@ -64,11 +70,19 @@ export class Store {
     return this.db.prepare("SELECT id,nickname,created_at,updated_at FROM players WHERE id=?").get(id) as Record<string, unknown> | undefined;
   }
 
-  putBet(playerId: string, day: string, line: TrackedLine, now: number): void {
+  publicProfile(id: string): { nickname: string } | undefined {
+    const row = this.db.prepare("SELECT nickname FROM players WHERE id=?").get(id) as { nickname: string } | undefined;
+    return row;
+  }
+
+  putBet(playerId: string, day: string, line: TrackedLine, now: number): boolean {
     const prediction = line === "6" ? "normal" : "disrupted";
-    this.db.prepare(`INSERT INTO bets(player_id,day,line,prediction,revised_at) VALUES(?,?,?,?,?)
-      ON CONFLICT(player_id,day) DO UPDATE SET line=excluded.line,prediction=excluded.prediction,revised_at=excluded.revised_at
-      WHERE bets.result='pending'`).run(playerId, day, line, prediction, now);
+    const player = this.player(playerId);
+    if (!player) return false;
+    const result = this.db.prepare(`INSERT INTO bets(player_id,day,line,prediction,nickname_snapshot,revised_at) VALUES(?,?,?,?,?,?)
+      ON CONFLICT(player_id,day) DO UPDATE SET line=excluded.line,prediction=excluded.prediction,nickname_snapshot=excluded.nickname_snapshot,revised_at=excluded.revised_at
+      WHERE bets.result='pending' AND bets.locked_at IS NULL`).run(playerId, day, line, prediction, String(player.nickname), now);
+    return result.changes === 1;
   }
 
   bet(playerId: string, day: string): Record<string, unknown> | undefined {
@@ -80,15 +94,21 @@ export class Store {
   }
 
   board(day: string): Record<string, unknown>[] {
-    return this.db.prepare(`SELECT p.nickname,b.line,b.prediction,b.result,b.revised_at,b.settled_at
+    return this.db.prepare(`SELECT CASE WHEN b.nickname_snapshot='' THEN p.nickname ELSE b.nickname_snapshot END nickname,
+      b.line,b.prediction,b.result,b.revised_at,b.settled_at
       FROM bets b JOIN players p ON p.id=b.player_id WHERE b.day=? ORDER BY b.revised_at`).all(day) as Record<string, unknown>[];
   }
 
-  recordPoll(day: string, checkedAt: number, statuses: LineStatus[] | null, error?: string): void {
+  latestResult(playerId: string): Record<string, unknown> | undefined {
+    return this.db.prepare(`SELECT day,line,prediction,result,settled_at FROM bets
+      WHERE player_id=? AND result!='pending' ORDER BY settled_at DESC LIMIT 1`).get(playerId) as Record<string, unknown> | undefined;
+  }
+
+  recordPoll(day: string, checkedAt: number, statuses: LineStatus[] | null, error?: string, startedAt = checkedAt): void {
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const poll = this.db.prepare("INSERT INTO polls(day,checked_at,success,error) VALUES(?,?,?,?)")
-        .run(day, checkedAt, statuses ? 1 : 0, error?.slice(0, 500) ?? null);
+      const poll = this.db.prepare("INSERT INTO polls(day,checked_at,success,error,started_at) VALUES(?,?,?,?,?)")
+        .run(day, checkedAt, statuses ? 1 : 0, error?.slice(0, 500) ?? null, startedAt);
       if (statuses) {
         const insert = this.db.prepare("INSERT INTO observations(poll_id,day,line,title,description,normal,checked_at) VALUES(?,?,?,?,?,?,?)");
         for (const status of statuses) insert.run(poll.lastInsertRowid, day, status.line, status.title, status.description, status.normal ? 1 : 0, checkedAt);
@@ -119,20 +139,16 @@ export class Store {
     return (this.db.prepare("SELECT checked_at FROM polls WHERE day=? AND success=1 ORDER BY checked_at").all(day) as { checked_at: number }[]).map((row) => row.checked_at);
   }
 
-  settleImmediate(day: string, line: TrackedLine, now: number): void {
-    if (line === "6") {
-      this.db.prepare("UPDATE bets SET result='lost',settled_at=? WHERE day=? AND line='6' AND result='pending'").run(now, day);
-    } else {
-      this.db.prepare("UPDATE bets SET result='won',settled_at=? WHERE day=? AND line=? AND result='pending'").run(now, day, line);
-    }
+  lockDay(day: string, lockedAt: number): void {
+    this.db.prepare("UPDATE bets SET locked_at=? WHERE day=? AND result='pending' AND locked_at IS NULL").run(lockedAt, day);
   }
 
-  settleEndOfDay(day: string, complete: boolean, now: number): void {
-    if (!complete) {
-      this.db.prepare("UPDATE bets SET result='unresolved',settled_at=? WHERE day=? AND result='pending'").run(now, day);
-      return;
+  reconcileDay(day: string, complete: boolean, finalize: boolean, now: number): void {
+    const bets = this.db.prepare("SELECT id,line FROM bets WHERE day=? AND result='pending' AND locked_at IS NOT NULL").all(day) as { id: number; line: TrackedLine }[];
+    const update = this.db.prepare("UPDATE bets SET result=?,settled_at=? WHERE id=? AND result='pending'");
+    for (const bet of bets) {
+      if (this.disrupted(day, bet.line)) update.run(bet.line === "6" ? "lost" : "won", now, bet.id);
+      else if (finalize) update.run(complete ? (bet.line === "6" ? "won" : "lost") : "unresolved", now, bet.id);
     }
-    this.db.prepare("UPDATE bets SET result='lost',settled_at=? WHERE day=? AND line!='6' AND result='pending'").run(now, day);
-    this.db.prepare("UPDATE bets SET result='won',settled_at=? WHERE day=? AND line='6' AND result='pending'").run(now, day);
   }
 }

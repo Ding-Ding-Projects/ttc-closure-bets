@@ -1,5 +1,5 @@
 import type { Store } from "./database.js";
-import { TRACKED_LINES, type LineStatus } from "./ttc.js";
+import { TRACKED_LINES } from "./ttc.js";
 import { nextTorontoDay, torontoClock } from "./time.js";
 
 export function coverageComplete(store: Store, day: string): boolean {
@@ -15,13 +15,14 @@ export function coverageComplete(store: Store, day: string): boolean {
   return true;
 }
 
-export function applyImmediateSettlements(store: Store, day: string, statuses: LineStatus[], now: number): void {
-  for (const status of statuses) if (!status.normal) store.settleImmediate(day, status.line, now);
+export function lockAndReconcile(store: Store, day: string, now: number, finalize = false): void {
+  store.lockDay(day, now);
+  store.reconcileDay(day, coverageComplete(store, day), finalize, now);
 }
 
 export function settlePreviousDays(store: Store, currentDay: string, now: number): void {
   const rows = store.db.prepare("SELECT DISTINCT day FROM bets WHERE day<? AND result='pending'").all(currentDay) as { day: string }[];
-  for (const { day } of rows) store.settleEndOfDay(day, coverageComplete(store, day), now);
+  for (const { day } of rows) lockAndReconcile(store, day, now, true);
 }
 
 export function dayEligible(store: Store, day: string): boolean {
@@ -41,7 +42,7 @@ export function dayEligibleNow(store: Store, day: string, now = Date.now()): boo
 
 export function displayDay(store: Store, now = new Date()): string {
   const today = torontoClock(now).day;
-  return dayEligibleNow(store, today, now.getTime()) ? today : nextTorontoDay(today);
+  return dayEligible(store, today) ? today : nextTorontoDay(today);
 }
 
 export const lineMetadata = TRACKED_LINES.map((line) => ({ line, prediction: line === "6" ? "normal" : "disrupted" }));

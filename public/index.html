@@ -17,7 +17,7 @@
       <div class="clock-row">
         <span id="clock" aria-label="Toronto time">--:--:--</span>
         <span class="divider" aria-hidden="true"></span>
-        <span id="countdown" aria-live="polite">waiting</span>
+        <span id="countdown" aria-label="Time until predictions lock">waiting</span>
       </div>
     </header>
 
@@ -25,7 +25,7 @@
       <form id="profile-form">
         <label for="nickname">Leave a name</label>
         <div class="field-row">
-          <input id="nickname" name="nickname" maxlength="32" autocomplete="nickname" required>
+          <input id="nickname" name="nickname" maxlength="32" autocomplete="nickname" aria-describedby="profile-message" required>
           <button type="submit">Enter</button>
         </div>
         <p class="message" id="profile-message" aria-live="polite"></p>
@@ -33,13 +33,13 @@
     </section>
 
     <section id="game" hidden>
-      <p class="nickname-row"><span id="hello"></span><button class="text-button" id="rename" type="button">change</button></p>
+      <p class="nickname-row"><span id="hello"></span><button class="text-button" id="rename" type="button">Change nickname</button></p>
       <fieldset id="line-fieldset">
         <legend class="visually-hidden">Choose one line</legend>
         <div class="line-grid" id="lines"></div>
       </fieldset>
-      <button class="lock-button" id="lock-button" type="button">Lock it in</button>
-      <p class="message" id="bet-message" aria-live="polite"></p>
+      <button class="lock-button" id="lock-button" type="button" aria-describedby="bet-message">Lock it in</button>
+      <p class="message" id="bet-message" role="status"></p>
     </section>
 
     <section class="result-card" id="result" hidden aria-live="polite">
@@ -48,7 +48,7 @@
     </section>
 
     <section class="board" id="board" hidden>
-      <div class="section-heading"><h2>09:00</h2><span id="freshness"></span></div>
+      <div class="section-heading"><h2>09:00</h2><span id="freshness" aria-label="Latest TTC status update"></span></div>
       <ul id="board-list"></ul>
     </section>
 
@@ -57,6 +57,10 @@
       <ul id="history-list"></ul>
     </section>
   </main>
+  <aside class="connection-message" id="connection-message" role="alert" hidden>
+    <span id="connection-copy">Could not refresh.</span>
+    <button type="button" id="retry">Try again</button>
+  </aside>
   <footer>
     <span>Independent. Not affiliated with or operated by the TTC.</span>
     <span>Exception: the universal feature suite is not implemented on this site.</span>

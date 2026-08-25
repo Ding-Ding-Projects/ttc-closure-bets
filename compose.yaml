@@ -3,13 +3,19 @@ services:
   web:
     build:
       context: .
-    image: ttc-closure-bets:${IMAGE_TAG:-local}
+      args:
+        VERSION: ${IMAGE_TAG:-v1.0.0}
+        REVISION: ${IMAGE_REVISION:-unknown}
+        CREATED: ${IMAGE_CREATED:-unknown}
+    image: ttc-closure-bets:${IMAGE_TAG:-v1.0.0}
     restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp/app:size=16m,mode=1770,uid=1000,gid=1000
     volumes:
       - ttc-data:/data
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://toronto-transit.org}
     networks:
       - origin
       - egress
@@ -26,12 +32,11 @@ services:
       retries: 3
       start_period: 20s
   tunnel:
-    image: cloudflare/cloudflared:2026.8.0
+    image: cloudflare/cloudflared:2026.8.0@sha256:2535e54b16adf1d50630f99d0886471926c5ef3f6b328100ec6589f731c48969
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: true
-    command: ["tunnel", "--no-autoupdate", "run"]
+    command: ["tunnel", "--no-autoupdate", "run", "--token-file", "/run/secrets/tunnel_token"]
+    secrets:
+      - tunnel_token
     networks:
       - origin
       - egress
@@ -50,3 +55,6 @@ networks:
   egress:
 volumes:
   ttc-data:
+secrets:
+  tunnel_token:
+    file: ./secrets/tunnel-token.txt

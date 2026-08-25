@@ -11,6 +11,7 @@ export type LineStatus = {
 export function parseTtcStatuses(html: string): LineStatus[] {
   const $ = load(html);
   const found = new Map<TrackedLine, LineStatus>();
+  const seen = new Set<TrackedLine>();
   const duplicated = new Set<TrackedLine>();
   $(".subway-line-group").each((_index, group) => {
     const card = $(group);
@@ -19,7 +20,8 @@ export function parseTtcStatuses(html: string): LineStatus[] {
     if (!match) return;
     const line = match[1] as TrackedLine;
     if (!TRACKED_LINES.includes(line)) return;
-    if (found.has(line)) { duplicated.add(line); return; }
+    if (seen.has(line)) { duplicated.add(line); found.delete(line); return; }
+    seen.add(line);
     const title = card.find(".alert-title").first().text().replace(/\s+/g, " ").trim();
     const description = card.find(".alert-description").first().text().replace(/\s+/g, " ").trim();
     if (!title) return;
@@ -40,8 +42,28 @@ export async function fetchTtcStatuses(url: string, signal: AbortSignal): Promis
   if (!type.toLowerCase().includes("text/html")) throw new Error("TTC response was not HTML");
   const declaredLength = Number(response.headers.get("content-length") || "0");
   if (declaredLength > 2_000_000) throw new Error("TTC response exceeded the 2 MB limit");
-  const html = await response.text();
-  if (Buffer.byteLength(html) > 2_000_000) throw new Error("TTC response exceeded the 2 MB limit");
+  if (!response.body) throw new Error("TTC response had no body");
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > 2_000_000) {
+        await reader.cancel("TTC response exceeded the 2 MB limit");
+        throw new Error("TTC response exceeded the 2 MB limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  const html = new TextDecoder("utf-8", { fatal: true }).decode(body);
   const statuses = parseTtcStatuses(html);
   if (statuses.length !== TRACKED_LINES.length) {
     throw new Error(`TTC response returned ${statuses.length} of ${TRACKED_LINES.length} tracked lines`);

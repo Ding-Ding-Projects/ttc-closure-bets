@@ -3,6 +3,10 @@
 node_modules
 dist
 .data
+.env
+.env.*
+!.env.example
+secrets
 tests
 *.sqlite*
 npm-debug.log*

@@ -30,16 +30,35 @@ No origin port is published. The `origin` network is internal to the web and tun
 - `toronto-transit.org` to `http://web:3000`
 - `www.toronto-transit.org` to a redirect rule for the apex hostname
 
-Place the dedicated tunnel token in the deployment host's uncommitted `.env` file as `TUNNEL_TOKEN`. Do not place it in source, command arguments, image layers, logs, or documentation.
+Create `secrets/tunnel-token.txt` on the deployment host and place only the dedicated tunnel token in that file. Compose mounts it read-only at runtime. The token is not placed in a container environment variable, build context, image layer, command argument, log, or committed file.
 
 ```sh
-cp .env.example .env
-docker compose build
+mkdir -p secrets
+# Write the token to secrets/tunnel-token.txt using a private input method.
+chmod 600 secrets/tunnel-token.txt
+IMAGE_TAG=v1.0.0 IMAGE_REVISION=<release-sha> IMAGE_CREATED=<utc-time> docker compose build web
 docker compose up -d
 docker compose ps
 ```
 
-Back up the named `ttc-data` volume before schema changes. Roll back by redeploying the previous immutable image tag while retaining the volume.
+In the Cloudflare dashboard, create a dedicated remotely managed tunnel, copy its token into the protected file above, and add these public hostnames:
+
+- `toronto-transit.org` with service `http://web:3000`
+- `www.toronto-transit.org` with an HTTP redirect to `https://toronto-transit.org`
+
+Keep caching disabled for `/api/*`, `/healthz`, and `/readyz`. The application also emits `Cache-Control: private, no-store` for those routes. Confirm the origin remains unpublished, then verify HTTPS, the apex redirect, security headers, a real TTC status refresh, prediction replacement before 9:00 AM Toronto time, the locked board after 9:00 AM, and the complete-day settlement after midnight.
+
+For local-only testing without a tunnel token:
+
+```sh
+docker compose build web
+docker compose up -d web
+curl http://127.0.0.1:3000/healthz # only if a temporary local port override is used
+```
+
+The committed Compose file intentionally publishes no port. Use a temporary local override for browser testing and do not carry that override into deployment.
+
+Back up the named `ttc-data` volume before schema changes. Roll back by redeploying a previously retained release image digest while retaining the volume.
 
 ## Status authority
 
