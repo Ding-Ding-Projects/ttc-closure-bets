@@ -25,7 +25,7 @@ Production uses the committed `compose.yaml` with two services:
 - `web`, the private origin and SQLite store
 - `tunnel`, an official Cloudflare Tunnel connector
 
-No origin port is published. Configure a remotely managed tunnel with these public hostnames:
+No origin port is published. The `origin` network is internal to the web and tunnel services, while a separate `egress` network permits outbound TTC polling and the tunnel connection. Configure a remotely managed tunnel with these public hostnames:
 
 - `toronto-transit.org` to `http://web:3000`
 - `www.toronto-transit.org` to a redirect rule for the apex hostname

@@ -12,6 +12,7 @@ services:
       - ttc-data:/data
     networks:
       - origin
+      - egress
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -33,6 +34,7 @@ services:
     command: ["tunnel", "--no-autoupdate", "run"]
     networks:
       - origin
+      - egress
     depends_on:
       web:
         condition: service_healthy
@@ -45,5 +47,6 @@ services:
 networks:
   origin:
     internal: true
+  egress:
 volumes:
   ttc-data:
