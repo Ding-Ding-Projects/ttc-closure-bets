@@ -1,0 +1,49 @@
+name: ttc-closure-bets
+services:
+  web:
+    build:
+      context: .
+    image: ttc-closure-bets:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp/app:size=16m,mode=1770,uid=1000,gid=1000
+    volumes:
+      - ttc-data:/data
+    networks:
+      - origin
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+  tunnel:
+    image: cloudflare/cloudflared:2026.8.0
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: true
+    command: ["tunnel", "--no-autoupdate", "run"]
+    networks:
+      - origin
+    depends_on:
+      web:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    cpus: 0.25
+networks:
+  origin:
+    internal: true
+volumes:
+  ttc-data:

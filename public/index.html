@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="description" content="Today has five choices.">
+  <title>Today</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <p class="eyebrow" id="date">TORONTO · TODAY</p>
+      <h1>Pick one.</h1>
+      <div class="clock-row">
+        <span id="clock" aria-label="Toronto time">--:--:--</span>
+        <span class="divider" aria-hidden="true"></span>
+        <span id="countdown" aria-live="polite">waiting</span>
+      </div>
+    </header>
+
+    <section class="identity" id="identity" hidden>
+      <form id="profile-form">
+        <label for="nickname">Leave a name</label>
+        <div class="field-row">
+          <input id="nickname" name="nickname" maxlength="32" autocomplete="nickname" required>
+          <button type="submit">Enter</button>
+        </div>
+        <p class="message" id="profile-message" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section id="game" hidden>
+      <p class="nickname-row"><span id="hello"></span><button class="text-button" id="rename" type="button">change</button></p>
+      <fieldset id="line-fieldset">
+        <legend class="visually-hidden">Choose one line</legend>
+        <div class="line-grid" id="lines"></div>
+      </fieldset>
+      <button class="lock-button" id="lock-button" type="button">Lock it in</button>
+      <p class="message" id="bet-message" aria-live="polite"></p>
+    </section>
+
+    <section class="result-card" id="result" hidden aria-live="polite">
+      <p class="result-kicker">RESULT</p>
+      <p class="result-copy" id="result-copy"></p>
+    </section>
+
+    <section class="board" id="board" hidden>
+      <div class="section-heading"><h2>09:00</h2><span id="freshness"></span></div>
+      <ul id="board-list"></ul>
+    </section>
+
+    <section class="history" id="history" hidden>
+      <h2>Before</h2>
+      <ul id="history-list"></ul>
+    </section>
+  </main>
+  <footer>
+    <span>Independent. Not affiliated with or operated by the TTC.</span>
+    <span>Exception: the universal feature suite is not implemented on this site.</span>
+  </footer>
+</body>
+</html>
